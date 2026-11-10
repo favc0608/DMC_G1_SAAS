@@ -232,6 +232,9 @@ class Generador:
         por_dia = ventas / p.dias
         pico = max(max(fila) for fila in pf.semana_hora) * 24
         avisos = []
+        if total < 1000:
+            avisos.append(f"Con menos de 1,000 eventos el total real varía bastante por azar "
+                          f"(aprox. {ventas:,.0f} ventas). Para pruebas use 10-20 eventos/s.")
         if por_dia > 20 * pf.ventas_dia_referencia:
             avisos.append(f"El volumen es {por_dia / pf.ventas_dia_referencia:,.0f} veces el histórico de Olist.")
         if p.segundos_por_dia < 2:

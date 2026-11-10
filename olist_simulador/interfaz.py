@@ -241,7 +241,7 @@ class Simulador:
         self.generador = Generador(p, self.perfil)
         pl = self.generador.plan()
         filas = [
-            ("Eventos a enviar", f"{pl.total_eventos:,}"),
+            ("Eventos a enviar", f"~{pl.total_eventos:,} (caudal × duración)"),
             ("Ventas estimadas", f"{pl.ventas_estimadas:,} ({pl.eventos_por_venta:.1f} eventos por venta)"),
             ("Ventas por día simulado", f"{pl.ventas_por_dia:,.0f} (referencia Olist 2018: {pl.ventas_dia_referencia:,})"),
             ("Reloj", f"1 día simulado = {pl.segundos_por_dia:,.1f} s reales"),
@@ -380,7 +380,9 @@ class Simulador:
             ("Estado", f"<span class='{clase}'>{m['estado'].capitalize()}</span>"
                        + (" (prueba sin envío)" if ej.sin_ritmo else "")),
             ("Fecha simulada", f"{m['fecha_simulada']:%Y-%m-%d %H:%M}" if m["fecha_simulada"] else "-"),
-            ("Validados" if ej.sin_ritmo else "Enviados", f"{m['enviados']:,} de ~{m['objetivo']:,} ({avance:.0%})"),
+            ("Validados" if ej.sin_ritmo else "Enviados",
+             f"{m['enviados']:,} · objetivo aproximado {m['objetivo']:,}"),
+            ("Avance", f"{avance:.0%} del tiempo" if not ej.sin_ritmo else f"{avance:.0%}"),
             ("Caudal", caudal if ej.sin_ritmo else f"{caudal} (objetivo {p.caudal:,})"),
             ("Tiempo", f"{_duracion(transcurrido)}" + ("" if ej.sin_ritmo else
                        f" de {_duracion(duracion)} · restante {_duracion(duracion - transcurrido)}")),

@@ -402,11 +402,12 @@ class Simulador:
                      f"Mensaje más grande: {tamano / 1024:,.1f} KB (límite SQS: 256 KB).")
             self.w_detalle.value = _html(f"<div class='ok'>{texto}</div>")
             return
-        hoy = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        hoy = datetime.now(timezone.utc)
         consulta = (
-            "SELECT tipo, count(*) AS eventos, count(DISTINCT evento_id) AS unicos\n"
-            "FROM g1_olist_lakehouse.landing_eventos_streaming\n"
-            f"WHERE fecha = '{hoy}'\nGROUP BY tipo\nORDER BY eventos DESC;")
+            "SELECT tipo, count(*) AS eventos, count(DISTINCT evento_id) AS distintos\n"
+            "FROM g1_olist_lakehouse.saas_landing_eventos\n"
+            f"WHERE year = '{hoy:%Y}' AND month = '{hoy:%m}' AND day = '{hoy:%d}'\n"
+            "GROUP BY tipo\nORDER BY eventos DESC;")
         self.w_detalle.value = _html(
             "<div class='olsim-seccion'>Verificación en Athena (workgroup g1-olist, 1-2 min después)</div>"
             f"<pre>{html.escape(consulta)}</pre>")

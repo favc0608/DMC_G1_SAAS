@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "olist-simulador"
+version = "1.0.0"
+description = "Simulador de ventas sintéticas de Olist para ingesta en tiempo real hacia Amazon SQS (Grupo 1 - DMC)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "boto3>=1.28",
+    "ipywidgets>=7.6",
+]
+
+[tool.setuptools]
+packages = ["olist_simulador"]
+
+[tool.setuptools.package-data]
+olist_simulador = ["datos/perfil.json.gz"]

@@ -1,0 +1,13 @@
+# Credenciales: nunca se versionan
+*.csv
+*credentials*
+*accessKeys*
+.env
+
+# Python
+__pycache__/
+*.egg-info/
+build/
+dist/
+.venv/
+.ipynb_checkpoints/

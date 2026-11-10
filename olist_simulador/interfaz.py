@@ -169,7 +169,6 @@ class Simulador:
         self.w_progreso = w.FloatProgress(value=0, min=0, max=1, layout=w.Layout(width="520px"))
         self.w_panel = w.HTML()
         self.w_detalle = w.HTML()
-        self.w_js = w.Output(layout=w.Layout(height="0px"))
 
         for control in [*self.w_tipos.values(), *self.w_bloques.values(), self.w_desde, self.w_hasta,
                         self.w_duracion, self.w_caudal, self.w_semilla, self.w_recompra, self.w_cambio,
@@ -192,11 +191,28 @@ class Simulador:
             self.w_avanzado,
             _seccion("Plan"), self.w_plan,
             w.HBox([self.b_vista, self.b_iniciar, self.b_detener], layout=w.Layout(margin="10px 0 0 0")),
-            _seccion("Ejecución"), self.w_progreso, self.w_panel, self.w_detalle, self.w_js,
+            _seccion("Ejecución"), self.w_progreso, self.w_panel, self.w_detalle,
         ], layout=w.Layout(max_width="900px"))
 
     def mostrar(self):
         display(self.vista)
+        if _salida_colab is not None:
+            # Colab descarta los cambios de widgets hechos desde hilos en segundo plano: el navegador
+            # pide el refresco del panel (cada pedido es una ejecución nueva del kernel). Mientras no hay
+            # simulación en curso consulta cada 3 s; durante la simulación, cada segundo.
+            display(Javascript(f"""
+            (() => {{
+              const ciclo = async () => {{
+                let espera = 3000;
+                try {{
+                  const r = await google.colab.kernel.invokeFunction('{self._callback}', [], {{}});
+                  espera = r.data['application/json'].espera;
+                }} catch (e) {{}}
+                setTimeout(ciclo, espera);
+              }};
+              setTimeout(ciclo, 1000);
+            }})();
+            """))
 
     # ==========================================
     # 2. PARÁMETROS Y PLAN
@@ -307,39 +323,30 @@ class Simulador:
     # 5. PANEL
     # ==========================================
     def _iniciar_refresco(self):
-        """Colab descarta los cambios de widgets hechos desde hilos en segundo plano, así que allí
-        el navegador pide un refresco por segundo (cada pedido es una ejecución nueva del kernel).
-        En Jupyter y VS Code basta con un hilo."""
+        """En Colab el refresco lo pide el navegador (ver mostrar); en Jupyter y VS Code, un hilo."""
         self._tick()
         if _salida_colab is None:
             threading.Thread(target=self._refrescar_hilo, name="panel-simulador", daemon=True).start()
-            return
-        script = f"""
-        (() => {{
-          const id = setInterval(async () => {{
-            try {{
-              const r = await google.colab.kernel.invokeFunction('{self._callback}', [], {{}});
-              if (!r.data['application/json'].activa) clearInterval(id);
-            }} catch (e) {{ clearInterval(id); }}
-          }}, 1000);
-        }})();
-        """
-        self.w_js.clear_output()
-        with self.w_js:
-            display(Javascript(script))
 
     def _refrescar_hilo(self):
         while self._tick():
             time.sleep(1)
 
     def _tick_colab(self):
-        return JSON({"activa": self._tick()})
+        try:
+            activa = self._tick()
+        except Exception as error:
+            self.w_detalle.value = _html(f"<div class='error'>Error del panel: {html.escape(str(error))}</div>")
+            activa = False
+        return JSON({"espera": 1000 if activa else 3000})
 
     def _tick(self):
         """Redibuja el panel; devuelve True mientras la simulación siga activa."""
         if self.ejecucion is None:
             return False
         activa = self.ejecucion.activa
+        if not activa and self._cerrada:
+            return False
         if activa and time.monotonic() - self._ultima_consulta_cola > 5:
             self._ultima_consulta_cola = time.monotonic()
             try:

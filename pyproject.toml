@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "olist-simulador"
-version = "1.0.0"
+version = "1.0.1"
 description = "Simulador de ventas sintéticas de Olist para ingesta en tiempo real hacia Amazon SQS (Grupo 1 - DMC)"
 readme = "README.md"
 requires-python = ">=3.10"

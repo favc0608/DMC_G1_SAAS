@@ -43,7 +43,7 @@ class ParametrosSimulacion:
         """Lista de errores de validación (vacía si los parámetros son válidos)."""
         e = []
         if not 0 < self.dias <= MAX_DIAS:
-            e.append(f"El periodo simulado debe estar entre 1 y {MAX_DIAS} días.")
+            e.append(f"La fecha Hasta debe ser posterior a Desde, con un periodo de 1 a {MAX_DIAS} días.")
         if not 0 < self.duracion_min <= MAX_DURACION_MIN:
             e.append(f"La duración debe estar entre 1 y {MAX_DURACION_MIN} minutos.")
         if not 0 < self.caudal <= MAX_CAUDAL:

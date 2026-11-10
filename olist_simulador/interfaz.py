@@ -3,13 +3,19 @@ import html
 import json
 import threading
 import time
-from datetime import datetime, timezone
+import uuid
+from datetime import datetime, timedelta, timezone
 
 import ipywidgets as w
-from IPython.display import display
+from IPython.display import JSON, Javascript, display
+
+try:  # En Colab el panel se refresca desde el navegador (ver _iniciar_refresco)
+    from google.colab import output as _salida_colab
+except ImportError:
+    _salida_colab = None
 
 from . import __version__
-from .config import BLOQUES, MAX_CAUDAL, MAX_DIAS, MAX_DURACION_MIN, ParametrosSimulacion
+from .config import BLOQUES, MAX_CAUDAL, MAX_DURACION_MIN, ParametrosSimulacion
 from .contrato import TIPOS
 from .credenciales import conectar, leer_csv
 from .ejecucion import Ejecucion
@@ -101,6 +107,12 @@ class Simulador:
         self.conexion = None
         self.ejecucion = None
         self.generador = None
+        self._cola = None
+        self._ultima_consulta_cola = 0.0
+        self._cerrada = True
+        self._callback = f"olsim_refrescar_{uuid.uuid4().hex[:8]}"
+        if _salida_colab is not None:
+            _salida_colab.register_callback(self._callback, self._tick_colab)
         self._construir()
         self._actualizar_plan()
 
@@ -124,10 +136,10 @@ class Simulador:
         self.w_bloques = {b: w.Checkbox(value=(b != "textos_resena"), description=ETIQUETAS_BLOQUE[b],
                                         indent=False, layout=w.Layout(width="190px")) for b in BLOQUES}
 
-        self.w_inicio = w.DatePicker(description="Inicio simulado", value=ParametrosSimulacion.inicio.date(),
-                                     style=ESTILO, layout=ANCHO)
-        self.w_dias = w.BoundedIntText(value=30, min=1, max=MAX_DIAS, description="Periodo (días)",
-                                       style=ESTILO, layout=ANCHO)
+        inicio = ParametrosSimulacion.inicio.date()
+        self.w_desde = w.DatePicker(description="Desde", value=inicio, style=ESTILO, layout=ANCHO)
+        self.w_hasta = w.DatePicker(description="Hasta", value=inicio + timedelta(days=30),
+                                    style=ESTILO, layout=ANCHO)
         self.w_duracion = w.BoundedIntText(value=10, min=1, max=MAX_DURACION_MIN, description="Duración (min)",
                                            style=ESTILO, layout=ANCHO)
         self.w_caudal = w.BoundedIntText(value=50, min=1, max=MAX_CAUDAL, description="Caudal (eventos/s)",
@@ -157,8 +169,9 @@ class Simulador:
         self.w_progreso = w.FloatProgress(value=0, min=0, max=1, layout=w.Layout(width="520px"))
         self.w_panel = w.HTML()
         self.w_detalle = w.HTML()
+        self.w_js = w.Output(layout=w.Layout(height="0px"))
 
-        for control in [*self.w_tipos.values(), *self.w_bloques.values(), self.w_inicio, self.w_dias,
+        for control in [*self.w_tipos.values(), *self.w_bloques.values(), self.w_desde, self.w_hasta,
                         self.w_duracion, self.w_caudal, self.w_semilla, self.w_recompra, self.w_cambio,
                         self.w_prueba]:
             control.observe(lambda _: self._actualizar_plan(), names="value")
@@ -172,12 +185,14 @@ class Simulador:
             _seccion("Eventos"),
             w.HBox(tipos[:4]), w.HBox(tipos[4:]),
             _seccion("Bloques del payload"), w.HBox(bloques),
-            _seccion("Simulación"),
-            w.HBox([w.VBox([self.w_inicio, self.w_dias]), w.VBox([self.w_duracion, self.w_caudal])]),
+            _seccion("Periodo simulado"),
+            w.HBox([self.w_desde, self.w_hasta]),
+            _seccion("Envío"),
+            w.HBox([self.w_duracion, self.w_caudal]),
             self.w_avanzado,
             _seccion("Plan"), self.w_plan,
             w.HBox([self.b_vista, self.b_iniciar, self.b_detener], layout=w.Layout(margin="10px 0 0 0")),
-            _seccion("Ejecución"), self.w_progreso, self.w_panel, self.w_detalle,
+            _seccion("Ejecución"), self.w_progreso, self.w_panel, self.w_detalle, self.w_js,
         ], layout=w.Layout(max_width="900px"))
 
     def mostrar(self):
@@ -187,10 +202,11 @@ class Simulador:
     # 2. PARÁMETROS Y PLAN
     # ==========================================
     def _parametros(self):
-        fecha = self.w_inicio.value or ParametrosSimulacion.inicio.date()
+        desde = self.w_desde.value or ParametrosSimulacion.inicio.date()
+        hasta = self.w_hasta.value or desde
         return ParametrosSimulacion(
-            inicio=datetime(fecha.year, fecha.month, fecha.day),
-            dias=self.w_dias.value, duracion_min=self.w_duracion.value, caudal=self.w_caudal.value,
+            inicio=datetime(desde.year, desde.month, desde.day),
+            dias=(hasta - desde).days, duracion_min=self.w_duracion.value, caudal=self.w_caudal.value,
             tipos=tuple(t for t, c in self.w_tipos.items() if c.value),
             bloques=tuple(b for b, c in self.w_bloques.items() if c.value),
             semilla=self.w_semilla.value, tasa_recompra=self.w_recompra.value / 100,
@@ -213,7 +229,7 @@ class Simulador:
             ("Ventas estimadas", f"{pl.ventas_estimadas:,} ({pl.eventos_por_venta:.1f} eventos por venta)"),
             ("Ventas por día simulado", f"{pl.ventas_por_dia:,.0f} (referencia Olist 2018: {pl.ventas_dia_referencia:,})"),
             ("Reloj", f"1 día simulado = {pl.segundos_por_dia:,.1f} s reales"),
-            ("Periodo", f"{p.inicio:%Y-%m-%d} a {pl.fin_simulado:%Y-%m-%d}"),
+            ("Periodo", f"{p.inicio:%Y-%m-%d} a {pl.fin_simulado:%Y-%m-%d} ({p.dias:,.0f} días)"),
             ("Archivos en S3", f"~{pl.archivos_por_minuto:,.0f} por minuto"),
             ("Costo estimado", "&lt; USD 0.01" if pl.costo_usd < 0.01 else f"USD {pl.costo_usd:,.2f}"),
         ]
@@ -276,10 +292,11 @@ class Simulador:
             return
         emisor = EmisorPrueba() if prueba else EmisorSQS(self.conexion)
         self.w_detalle.value = ""
+        self._cola, self._ultima_consulta_cola, self._cerrada = None, 0.0, False
         self.ejecucion = Ejecucion(self.generador, emisor, sin_ritmo=prueba)
         self.ejecucion.iniciar()
         self._habilitar()
-        threading.Thread(target=self._refrescar, name="panel-simulador", daemon=True).start()
+        self._iniciar_refresco()
 
     def _al_detener(self, _):
         if self.ejecucion:
@@ -289,22 +306,52 @@ class Simulador:
     # ==========================================
     # 5. PANEL
     # ==========================================
-    def _refrescar(self):
-        cola, ultima_consulta = None, 0.0
-        while True:
-            activa = self.ejecucion.activa
-            if activa and time.monotonic() - ultima_consulta > 5:
-                ultima_consulta = time.monotonic()
-                try:
-                    cola = self.ejecucion.emisor.estado_cola()
-                except Exception:
-                    cola = None
-            self._pintar(cola)
-            if not activa:
-                break
+    def _iniciar_refresco(self):
+        """Colab descarta los cambios de widgets hechos desde hilos en segundo plano, así que allí
+        el navegador pide un refresco por segundo (cada pedido es una ejecución nueva del kernel).
+        En Jupyter y VS Code basta con un hilo."""
+        self._tick()
+        if _salida_colab is None:
+            threading.Thread(target=self._refrescar_hilo, name="panel-simulador", daemon=True).start()
+            return
+        script = f"""
+        (() => {{
+          const id = setInterval(async () => {{
+            try {{
+              const r = await google.colab.kernel.invokeFunction('{self._callback}', [], {{}});
+              if (!r.data['application/json'].activa) clearInterval(id);
+            }} catch (e) {{ clearInterval(id); }}
+          }}, 1000);
+        }})();
+        """
+        self.w_js.clear_output()
+        with self.w_js:
+            display(Javascript(script))
+
+    def _refrescar_hilo(self):
+        while self._tick():
             time.sleep(1)
-        self._habilitar()
-        self._resumen_final()
+
+    def _tick_colab(self):
+        return JSON({"activa": self._tick()})
+
+    def _tick(self):
+        """Redibuja el panel; devuelve True mientras la simulación siga activa."""
+        if self.ejecucion is None:
+            return False
+        activa = self.ejecucion.activa
+        if activa and time.monotonic() - self._ultima_consulta_cola > 5:
+            self._ultima_consulta_cola = time.monotonic()
+            try:
+                self._cola = self.ejecucion.emisor.estado_cola()
+            except Exception:
+                self._cola = None
+        self._pintar(self._cola)
+        if not activa and not self._cerrada:
+            self._cerrada = True
+            self._habilitar()
+            self._resumen_final()
+        return activa
 
     def _pintar(self, cola):
         ej = self.ejecucion

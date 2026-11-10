@@ -34,14 +34,13 @@ for momento, mensaje in g.eventos():
 
 | Parámetro | Descripción | Rango |
 |---|---|---|
-| Inicio simulado | Fecha en que arranca el reloj simulado | Por defecto 2026-09-04 |
-| Periodo | Días de negocio que se simulan | 1 a 365 |
+| Desde / Hasta | Rango de fechas de negocio que se simula | 1 a 365 días; por defecto desde 2026-09-04 |
 | Duración | Minutos reales que dura el envío | 1 a 240 |
 | Caudal | Eventos por segundo (promedio) | 1 a 200 |
 | Semilla | Misma semilla y parámetros = mismos eventos | Entero |
 | Recompra / cambio de dirección | Probabilidades del cliente (por defecto, las de Olist) | 0 a 100 % |
 
-Caudal × duración determina cuántos eventos se envían; el periodo determina la velocidad del reloj.
+Caudal × duración determina cuántos eventos se envían; el rango de fechas determina la velocidad del reloj.
 Dentro del día, las compras siguen la estacionalidad por hora y día de la semana de Olist.
 
 ## Eventos

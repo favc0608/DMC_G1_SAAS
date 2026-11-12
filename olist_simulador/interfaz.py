@@ -407,7 +407,7 @@ class Simulador:
         hoy = datetime.now(timezone.utc)
         consulta = (
             "SELECT tipo, count(*) AS eventos, count(DISTINCT evento_id) AS distintos\n"
-            "FROM g1_olist_lakehouse.saas_landing_eventos\n"
+            "FROM g1_olist_lakehouse.erp_landing_eventos\n"
             f"WHERE year = '{hoy:%Y}' AND month = '{hoy:%m}' AND day = '{hoy:%d}'\n"
             "GROUP BY tipo\nORDER BY eventos DESC;")
         self.w_detalle.value = _html(

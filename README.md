@@ -5,8 +5,12 @@ integrador del Diplomado de Ingeniería de Datos (DMC). Las ventas se generan a 
 estadístico del dataset público de Olist y se envían como eventos a una cola de Amazon SQS.
 
 ```
-Simulador (Colab) ──► SQS g1-olist-eventos ──► Lambda ──► S3 landing ──► bronze ──► silver ──► gold
+Simulador (Colab) ──► SQS g1-olist-eventos ──► Lambda ──► S3 erp/landing (CSV formato Olist) ──► bronze ──► silver ──► gold
 ```
+
+Desde la v2.0.0 las ventas sintéticas pueblan el **ERP**: la Lambda convierte cada evento en filas CSV con las
+columnas de Olist (orders, order_items, payments, reviews y los incrementales de clientes) que leen los jobs
+de bronze del ERP, y guarda además una copia cruda de los eventos para auditoría.
 
 [Abrir en Colab](https://colab.research.google.com/github/favc0608/DMC_G1_SAAS/blob/main/notebooks/simulador_olist_g1.ipynb)
 
@@ -45,19 +49,20 @@ Dentro del día, las compras siguen la estacionalidad por hora y día de la sema
 
 ## Eventos
 
-Contrato: `{"evento_id": uuid, "tipo": str, "ts_evento": ISO-8601, "version": 1, "payload": {...}}`.
+Contrato: `{"evento_id": uuid, "tipo": str, "ts_evento": ISO-8601, "version": 2, "payload": {...}}`.
 
 | Tipo | Payload | Campos obligatorios |
 |---|---|---|
-| `pedido_creado` | pedido, cliente, items (producto y vendedor), pagos | pedido.order_id, pedido.order_purchase_timestamp, cliente.customer_id, cliente.customer_unique_id, items |
-| `pedido_aprobado` / `pedido_enviado` / `pedido_entregado` | order_id, order_status, fecha | order_id, fecha |
-| `pedido_cancelado` | order_id, order_status (`canceled` o `unavailable`), fecha | order_id |
-| `resena_creada` | review_id, order_id, puntaje, título, mensaje, fechas | review_id, order_id, review_score |
+| `pedido_creado` | pedido (fila completa), cliente, items (producto y vendedor), pagos | pedido.order_id, pedido.customer_id, pedido.order_purchase_timestamp, pedido.order_estimated_delivery_date, cliente.customer_id, cliente.customer_unique_id, items |
+| `pedido_aprobado` / `pedido_enviado` / `pedido_entregado` | order_id, order_status, fecha, **pedido** (fila completa con el estado nuevo) | order_id, fecha, pedido.order_id, pedido.order_purchase_timestamp |
+| `pedido_cancelado` | order_id, order_status (`canceled` o `unavailable`), fecha, **pedido** | order_id, pedido.order_id, pedido.order_purchase_timestamp |
+| `resena_creada` | review_id, order_id, puntaje, título, mensaje, fechas | review_id, order_id, review_score, review_creation_date |
 | `cliente_actualizado` | cliente con su nueva dirección, motivo | customer_id, customer_unique_id |
 
 - `ts_evento` es la fecha simulada de negocio (UTC).
-- `evento_id` es determinista (uuid5 de semilla, tipo y clave): reenviar no genera duplicados después de la
-  deduplicación en bronze.
+- `evento_id` y los ids de negocio son deterministas (misma semilla = mismos ids): reenviar un periodo
+  repite filas idénticas, que silver deduplica por la clave de cada entidad.
+- Los mensajes con el contrato v1 (cambios de estado sin el bloque `pedido`) se rechazan desde la v2.0.0.
 - La entrega de SQS Standard es "al menos una vez" y sin orden garantizado.
 
 ## Realismo

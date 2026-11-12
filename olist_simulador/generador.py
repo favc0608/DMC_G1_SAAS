@@ -167,30 +167,40 @@ class Generador:
             eventos.append((momento, "cliente_actualizado", f"{cliente['customer_unique_id']}|{order_id}",
                             {**cliente, "motivo": "cambio_direccion"}))
 
-        creado = {"pedido": {"order_id": order_id, "order_status": "created",
-                             "order_purchase_timestamp": _fecha(compra),
-                             "order_estimated_delivery_date": _fecha(estimada)},
-                  "cliente": cliente, "items": items}
+        # Fila completa del pedido (columnas de olist_orders_dataset). Cada evento de estado lleva una
+        # copia con el estado y las fechas hasta ese momento: el ERP la guarda como fila CSV completa.
+        pedido = {"order_id": order_id, "customer_id": cliente["customer_id"], "order_status": "created",
+                  "order_purchase_timestamp": _fecha(compra), "order_approved_at": None,
+                  "order_delivered_carrier_date": None, "order_delivered_customer_date": None,
+                  "order_estimated_delivery_date": _fecha(estimada)}
+
+        def cambio_estado(estado, momento, columna=None):
+            pedido["order_status"] = estado
+            if columna:
+                pedido[columna] = _fecha(momento)
+            return {"order_id": order_id, "order_status": estado, "fecha": _fecha(momento), "pedido": dict(pedido)}
+
+        creado = {"pedido": dict(pedido), "cliente": cliente, "items": items}
         if "pagos" in self.p.bloques:
             creado["pagos"] = self._pagos(rng, round(sum(i["price"] + i["freight_value"] for i in items), 2))
         eventos.append((compra, "pedido_creado", order_id, creado))
         eventos.append((aprobado, "pedido_aprobado", order_id,
-                        {"order_id": order_id, "order_status": "approved", "fecha": _fecha(aprobado)}))
+                        cambio_estado("approved", aprobado, "order_approved_at")))
 
         lg = pf.logistica
         if rng.random() < lg["tasa_cancelacion"]:
             estado = "unavailable" if rng.random() < lg["cancelacion_unavailable"] else "canceled"
             cancelado = aprobado + timedelta(days=rng.uniform(0.2, 3))
-            eventos.append((cancelado, "pedido_cancelado", order_id,
-                            {"order_id": order_id, "order_status": estado, "fecha": _fecha(cancelado)}))
+            # Olist no tiene columna de fecha de cancelación: solo cambia el estado
+            eventos.append((cancelado, "pedido_cancelado", order_id, cambio_estado(estado, cancelado)))
             grupo, base = "cancelado", cancelado
         else:
             enviado = compra + timedelta(days=despacho_d)
             entregado = compra + timedelta(days=entrega_d)
             eventos.append((enviado, "pedido_enviado", order_id,
-                            {"order_id": order_id, "order_status": "shipped", "fecha": _fecha(enviado)}))
+                            cambio_estado("shipped", enviado, "order_delivered_carrier_date")))
             eventos.append((entregado, "pedido_entregado", order_id,
-                            {"order_id": order_id, "order_status": "delivered", "fecha": _fecha(entregado)}))
+                            cambio_estado("delivered", entregado, "order_delivered_customer_date")))
             atraso = (_medianoche(entregado) - estimada).days
             grupo = ("a_tiempo" if atraso <= 0 else "tarde_1_3" if atraso <= 3
                      else "tarde_4_7" if atraso <= 7 else "tarde_8_mas")

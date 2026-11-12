@@ -1,22 +1,24 @@
 """Contrato de mensaje entre el simulador y el consumidor (Lambda).
 
 Debe coincidir con PAYLOAD_OBLIGATORIO de lambda/consumidor/handler.py del proyecto.
-Mensaje: {"evento_id": uuid, "tipo": str, "ts_evento": ISO-8601, "version": 1, "payload": {...}}
+Mensaje: {"evento_id": uuid, "tipo": str, "ts_evento": ISO-8601, "version": 2, "payload": {...}}
 """
 import uuid
 from datetime import datetime
 
-VERSION = 1
+VERSION = 2  # v2 (2026-11-11): fila completa del pedido en los cambios de estado
 
 # Campos obligatorios del payload por tipo de evento ("a.b" = campo anidado)
 PAYLOAD_OBLIGATORIO = {
-    "pedido_creado": ["pedido.order_id", "pedido.order_purchase_timestamp",
+    "pedido_creado": ["pedido.order_id", "pedido.customer_id", "pedido.order_purchase_timestamp",
+                      "pedido.order_estimated_delivery_date",
                       "cliente.customer_id", "cliente.customer_unique_id", "items"],
-    "pedido_aprobado": ["order_id", "fecha"],
-    "pedido_enviado": ["order_id", "fecha"],
-    "pedido_entregado": ["order_id", "fecha"],
-    "pedido_cancelado": ["order_id"],
-    "resena_creada": ["review_id", "order_id", "review_score"],
+    # v2: los cambios de estado traen la fila completa del pedido (el ERP la guarda como fila CSV)
+    "pedido_aprobado": ["order_id", "fecha", "pedido.order_id", "pedido.order_purchase_timestamp"],
+    "pedido_enviado": ["order_id", "fecha", "pedido.order_id", "pedido.order_purchase_timestamp"],
+    "pedido_entregado": ["order_id", "fecha", "pedido.order_id", "pedido.order_purchase_timestamp"],
+    "pedido_cancelado": ["order_id", "pedido.order_id", "pedido.order_purchase_timestamp"],
+    "resena_creada": ["review_id", "order_id", "review_score", "review_creation_date"],
     "cliente_actualizado": ["customer_id", "customer_unique_id"],
 }
 

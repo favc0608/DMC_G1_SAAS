@@ -4,7 +4,7 @@ from .contrato import PAYLOAD_OBLIGATORIO, TIPOS, validar
 from .generador import Generador
 from .perfil import cargar_perfil
 
-__version__ = "1.0.4"
+__version__ = "2.0.0"
 __all__ = ["Generador", "ParametrosSimulacion", "Plan", "PAYLOAD_OBLIGATORIO", "TIPOS",
            "validar", "cargar_perfil", "Simulador", "__version__"]
 
